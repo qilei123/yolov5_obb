@@ -5,7 +5,7 @@ root_dir2=/data3/qilei_chen
 python train_obb_v1.py --img 1280 \
                         --batch 32 \
                         --epochs 128 \
-                        --data trans_drone_cat3_v2.yaml 
+                        --data trans_drone_cat3_v2.yaml \
                         --weights yolov5s.pt \
                         --project $root_dir1/work_model_dirs/yolov5/trans_drone_cat3/yolov5s \
                         --name exp_yolov5_obb \
