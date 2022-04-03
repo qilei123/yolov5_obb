@@ -1,0 +1,20 @@
+# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
+# COCO128 dataset https://www.kaggle.com/ultralytics/coco128 (first 128 images from COCO train2017) by Ultralytics
+# Example usage: python train.py --data coco128.yaml
+# parent
+# ├── yolov5
+# └── datasets
+#     └── coco128  ← downloads here
+
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+#path: /data3/qilei_chen/DATA/trans_drone  # dataset root dir #this is for server 66
+path: /home/qilei/DATASETS/trans_drone/andover_worster # this is for prof. Xie's server
+#path: /media/cql/DATA1/DATASET/trans_drone
+train: annotations/train_AW_C5.json  # train annotations (relative to 'path')
+val: annotations/test_AW_C5.json  # val annotations (relative to 'path')
+test: annotations/test_AW_C5.json  # test images (optional)
+
+# Classes
+nc: 3  # number of classes
+names: ['Small 1-piece vehicle', 'Large 1-piece vehicle', 'Extra-large 2-piece truck']  # class names
+

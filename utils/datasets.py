@@ -31,6 +31,10 @@ from utils.general import (LOGGER, NUM_THREADS, check_dataset, check_requirement
 from utils.torch_utils import torch_distributed_zero_first
 from utils.rboxs_utils import poly_filter, poly2rbox
 
+import sys
+sys.path.append('/home/qilei/DEVELOPMENT/yolov5_obb')
+from pycocotools.coco import COCO
+
 # Parameters
 HELP_URL = 'https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data'
 IMG_FORMATS = ['bmp', 'jpg', 'jpeg', 'png', 'tif', 'tiff', 'dng', 'webp', 'mpo']  # acceptable image suffixes
@@ -41,6 +45,34 @@ WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))  # DPP
 for orientation in ExifTags.TAGS.keys():
     if ExifTags.TAGS[orientation] == 'Orientation':
         break
+
+from shapely.geometry import Point, Polygon, MultiPoint
+
+
+def seg2points(seg):
+    points = []
+
+    for i in range(len(seg)):
+        if i % 2 == 1:
+            points.append((seg[i - 1], seg[i]))
+
+    return points
+
+#获取由点组成的多边形的最小外接矩形
+def seg2minrect(seg):
+    # seg = ann['segmentation'][0]
+    # print(seg)
+    polygon_points = seg2points(seg)
+    polygon = Polygon(polygon_points)
+    # print(polygon)
+    min_rect = polygon.minimum_rotated_rectangle
+    # print(min_rect)
+    xs, ys = min_rect.exterior.coords.xy
+    xys = []
+    for i in range(4):
+        xys.append(round(xs[i], 2))
+        xys.append(round(ys[i], 2))
+    return xys
 
 
 def get_hash(paths):
@@ -93,21 +125,34 @@ def exif_transpose(image):
 
 
 def create_dataloader(path, imgsz, batch_size, stride, names, single_cls=False, hyp=None, augment=False, cache=False, pad=0.0,
-                      rect=False, rank=-1, workers=8, image_weights=False, quad=False, prefix='', shuffle=False):
+                      rect=False, rank=-1, workers=8, image_weights=False, quad=False, prefix='', shuffle=False,select_cats=None):
     if rect and shuffle:
         LOGGER.warning('WARNING: --rect is incompatible with DataLoader shuffle, setting shuffle=False')
         shuffle = False
     with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
-        dataset = LoadImagesAndLabels(path, names, imgsz, batch_size,
-                                      augment=augment,  # augmentation
-                                      hyp=hyp,  # hyperparameters
-                                      rect=rect,  # rectangular batches
-                                      cache_images=cache,
-                                      single_cls=single_cls,
-                                      stride=int(stride),
-                                      pad=pad,
-                                      image_weights=image_weights,
-                                      prefix=prefix)
+        if path.endswith('.json'):
+            dataset = LoadImagesAndLabels4TD(path, names, imgsz, batch_size,
+                                        augment=augment,  # augmentation
+                                        hyp=hyp,  # hyperparameters
+                                        rect=rect,  # rectangular batches
+                                        cache_images=cache,
+                                        single_cls=single_cls,
+                                        stride=int(stride),
+                                        pad=pad,
+                                        image_weights=image_weights,
+                                        prefix=prefix,
+                                        select_cats=select_cats)
+        else:
+            dataset = LoadImagesAndLabels(path, names, imgsz, batch_size,
+                                        augment=augment,  # augmentation
+                                        hyp=hyp,  # hyperparameters
+                                        rect=rect,  # rectangular batches
+                                        cache_images=cache,
+                                        single_cls=single_cls,
+                                        stride=int(stride),
+                                        pad=pad,
+                                        image_weights=image_weights,
+                                        prefix=prefix)                                    
 
     batch_size = min(batch_size, len(dataset))
     nw = min([os.cpu_count() // WORLD_SIZE, batch_size if batch_size > 1 else 0, workers])  # number of workers
@@ -1108,3 +1153,172 @@ def dataset_stats(path='coco128.yaml', autodownload=False, verbose=False, profil
     if verbose:
         print(json.dumps(stats, indent=2, sort_keys=False))
     return stats
+
+
+class LoadImagesAndLabels4TD(LoadImagesAndLabels):
+    # YOLOv5 train_loader/val_loader, loads images and labels for training and validation
+    cache_version = 0.7  # dataset labels *.cache version
+
+    def __init__(self, path, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
+                 cache_images=False, single_cls=False, stride=32, pad=0.0, prefix='',select_cats = None):
+        self.img_size = img_size
+        self.augment = augment
+        self.hyp = hyp
+        self.image_weights = image_weights
+        self.rect = False if image_weights else rect
+        #print(path)
+        #print(self.image_weights)
+        #print(self.rect)
+        self.mosaic = self.augment #and not self.rect  # load 4 images at a time into a mosaic (only during training)
+        self.mosaic_border = [-img_size // 2, -img_size // 2]
+        self.stride = stride
+        self.path = path
+        self.albumentations = Albumentations() if augment else None
+
+        # dictory example:
+        # annotations: path = data_root/annotations/train.json; here path is the dir for annotation file
+        # images: data_root/images/*
+        coco = COCO(path)
+        data_root = Path(path).parent.parent
+        images_root = os.path.join(data_root,'images')
+        self.img_files =  []
+        self.labels = [] #(img,cat,x,y,w,h)
+        self.shapes = []
+        self.segments = []
+        self.obbs = []
+
+        if select_cats:
+            select_cats_id = coco.getCatIds(catNms=select_cats)
+        else:
+            select_cats_id = coco.getCatIds()
+
+        cat_id_map = {}
+        for new_cat_id,cat_id in enumerate(select_cats_id):
+            cat_id_map[cat_id] = new_cat_id
+        
+        for ImgId in coco.getImgIds():
+
+            img = coco.loadImgs([ImgId])[0]
+            
+            img_width,img_height = img['width'],img['height']
+
+            annIds =  coco.getAnnIds(ImgId)
+            anns = coco.loadAnns(annIds)
+
+            boxes = []
+            segs = []
+            for ann in anns:
+                if ann['category_id'] in select_cats_id:
+                    '''
+                    box = [ann['category_id']-1,
+                            (ann['bbox'][0]+ann['bbox'][2]/2)/img_width,
+                            (ann['bbox'][1]+ann['bbox'][3]/2)/img_height,
+                            ann['bbox'][2]/img_width,
+                            ann['bbox'][3]/img_height]
+                    '''
+                    box = []
+                    box.append(cat_id_map[ann['category_id']])
+
+                    seg = []
+                    seg.append(cat_id_map[ann['category_id']])
+
+                    ann_segmentation_minrect = seg2minrect(ann['segmentation'][0])
+                    
+                    for coord_index,coord in enumerate(ann_segmentation_minrect):
+                        if coord_index%2==1:
+                            
+                            box.append(ann_segmentation_minrect[coord_index-1]/img_width)
+                            box.append(coord/img_height)
+
+                            seg.append(ann_segmentation_minrect[coord_index-1]/img_width)
+                            seg.append(coord/img_height)
+                    
+                    boxes.append(box)
+                    segs.append(seg)
+
+            if len(boxes)>0:
+                self.shapes.append((img_width,img_height))
+                if 'Wide' in img['file_name']:
+                    img['file_name'] = img['file_name'].replace('andover','andover_wide')# this is for trans_drone only
+                self.img_files.append(os.path.join(images_root,img['file_name']))
+                
+                self.labels.append(np.array(boxes, dtype=np.float64))
+                self.segments.append(np.array(segs, dtype=np.float64))
+                #self.obbs.append(np.array(poly2obb_without_regular(segs), dtype=np.float64))
+
+        # Read cache
+        #[cache.pop(k) for k in ('hash', 'version', 'msgs')]  # remove items
+        #labels, shapes, self.segments = zip(*cache.values())
+        #self.labels = list(labels)
+        self.shapes = np.array(self.shapes, dtype=np.float64)
+        #self.img_files = list(cache.keys())  # update
+        #self.label_files = img2label_paths(cache.keys())  # update
+        n = len(self.shapes)  # number of images
+        bi = np.floor(np.arange(n) / batch_size).astype(np.int)  # batch index
+        nb = bi[-1] + 1  # number of batches
+        self.batch = bi  # batch index of image
+        self.n = n
+        self.indices = range(n)
+
+        # Update labels
+        include_class = []  # filter labels to include only these classes (optional)
+        include_class_array = np.array(include_class).reshape(1, -1)
+        for i, (label, segment) in enumerate(zip(self.labels, self.segments)):
+            if include_class:
+                j = (label[:, 0:1] == include_class_array).any(1)
+                self.labels[i] = label[j]
+                if segment:
+                    self.segments[i] = segment[j]
+            if single_cls:  # single-class training, merge all classes into 0
+                self.labels[i][:, 0] = 0
+                if segment:
+                    self.segments[i][:, 0] = 0
+            assert len(label)==len(segment),"they should be equal"
+
+        #self.rect = True
+        # Rectangular Training
+        if self.rect:
+            # Sort by aspect ratio
+            s = self.shapes  # wh
+            ar = s[:, 1] / s[:, 0]  # aspect ratio
+            irect = ar.argsort()
+            self.img_files = [self.img_files[i] for i in irect]
+            #self.label_files = [self.label_files[i] for i in irect]
+            self.labels = [self.labels[i] for i in irect]
+            self.segments = [self.segments[i] for i in irect]
+            self.shapes = s[irect]  # wh
+            ar = ar[irect]
+
+            # Set training image shapes
+            shapes = [[1, 1]] * nb
+            for i in range(nb):
+                ari = ar[bi == i]
+                mini, maxi = ari.min(), ari.max()
+                if maxi < 1:
+                    shapes[i] = [maxi, 1]
+                elif mini > 1:
+                    shapes[i] = [1, 1 / mini]
+
+            self.batch_shapes = np.ceil(np.array(shapes) * img_size / stride + pad).astype(np.int) * stride
+
+        # Cache images into RAM/disk for faster training (WARNING: large datasets may exceed system resources)
+        self.imgs, self.img_npy = [None] * n, [None] * n
+        if cache_images:
+            if cache_images == 'disk':
+                self.im_cache_dir = Path(Path(self.img_files[0]).parent.as_posix() + '_npy')
+                self.img_npy = [self.im_cache_dir / Path(f).with_suffix('.npy').name for f in self.img_files]
+                self.im_cache_dir.mkdir(parents=True, exist_ok=True)
+            gb = 0  # Gigabytes of cached images
+            self.img_hw0, self.img_hw = [None] * n, [None] * n
+            results = ThreadPool(NUM_THREADS).imap(self.load_image, range(n))
+            pbar = tqdm(enumerate(results), total=n)
+            for i, x in pbar:
+                if cache_images == 'disk':
+                    if not self.img_npy[i].exists():
+                        np.save(self.img_npy[i].as_posix(), x[0])
+                    gb += self.img_npy[i].stat().st_size
+                else:  # 'ram'
+                    self.imgs[i], self.img_hw0[i], self.img_hw[i] = x  # im, hw_orig, hw_resized = load_image(self, i)
+                    gb += self.imgs[i].nbytes
+                pbar.desc = f'{prefix}Caching images ({gb / 1E9:.1f}GB {cache_images})'
+            pbar.close()    
