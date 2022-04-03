@@ -2,7 +2,7 @@ export CUDA_VISIBLE_DEVICES=0,1
 root_dir1=/data/qilei
 root_dir2=/data3/qilei_chen
 
-python train_obb_v1.py --img 1280 \
+python train.py --img 1280 \
                         --batch 32 \
                         --epochs 128 \
                         --data trans_drone_cat3_v2.yaml \
