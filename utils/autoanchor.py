@@ -142,7 +142,7 @@ def kmean_anchors(dataset='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen
         if len(rboxes):
             ls_edges0.append(rboxes[:, 2:4])
     ls_edges0 = np.concatenate(ls_edges0)
-
+    print(ls_edges0)
     # Filter
     i = (ls_edges0 < 5.0).any(1).sum()
     if i:
