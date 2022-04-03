@@ -137,6 +137,7 @@ def kmean_anchors(dataset='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen
     # wh0 = np.concatenate([l[:, 3:5] * s for s, l in zip(shapes, dataset.labels)])  # wh
     min_ratios = img_size  / dataset.shapes.max(1, keepdims=True) # 
     ls_edges0 = []
+    print(dataset.labels)
     for ratio, labels in zip(min_ratios, dataset.labels): # labels (array): (num_gt_perimg, [cls_id, poly])
         rboxes = poly2rbox(labels[:, 1:] * ratio)
         if len(rboxes):
