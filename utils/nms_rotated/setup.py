@@ -191,7 +191,7 @@ def parse_requirements(fname='requirements.txt', with_version=True):
 
 
 if __name__ == '__main__':
-    write_version_py()
+    #write_version_py()
     setup(
         name='nms_rotated_ext',
         version=get_version(),
