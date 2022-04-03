@@ -196,7 +196,7 @@ if __name__ == '__main__':
         name='nms_rotated_ext',
         version=get_version(),
         description='yolo5obb Detection Toolbox and Benchmark',
-        long_description=readme(),
+        #long_description=readme(),
         author='yolo5obb',
         author_email='qileimail123@gmail.com',
         keywords='computer vision, object detection',
