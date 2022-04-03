@@ -8,14 +8,7 @@ import torch
 from torch.utils.cpp_extension import (BuildExtension, CppExtension,
                                        CUDAExtension)
 
-
-def readme():
-    with open('README.md', encoding='utf-8') as f:
-        content = f.read()
-    return content
-
-
-version_file = 'version.py'
+version_file = 'mmdet/version.py'
 
 
 def get_git_hash():
@@ -49,7 +42,7 @@ def get_hash():
         sha = get_git_hash()[:7]
     elif os.path.exists(version_file):
         try:
-            from version import __version__
+            from mmdet.version import __version__
             sha = __version__.split('+')[-1]
         except ImportError:
             raise ImportError('Unable to get git version')
@@ -62,13 +55,12 @@ def get_hash():
 def write_version_py():
     content = """# GENERATED VERSION FILE
 # TIME: {}
-
 __version__ = '{}'
 short_version = '{}'
 version_info = ({})
 """
     sha = get_hash()
-    with open('VERSION', 'r') as f:
+    with open('mmdet/VERSION', 'r') as f:
         SHORT_VERSION = f.read().strip()
     VERSION_INFO = ', '.join(SHORT_VERSION.split('.'))
     VERSION = SHORT_VERSION + '+' + sha
@@ -77,12 +69,6 @@ version_info = ({})
                                       VERSION_INFO)
     with open(version_file, 'w') as f:
         f.write(version_file_str)
-
-
-def get_version():
-    with open(version_file, 'r') as f:
-        exec(compile(f.read(), version_file, 'exec'))
-    return locals()['__version__']
 
 
 def make_cuda_ext(name, module, sources, sources_cuda=[]):
@@ -115,14 +101,11 @@ def parse_requirements(fname='requirements.txt', with_version=True):
     """
     Parse the package dependencies listed in a requirements file but strips
     specific versioning information.
-
     Args:
         fname (str): path to requirements file
         with_version (bool, default=False): if True include version specs
-
     Returns:
         List[str]: list of requirements items
-
     CommandLine:
         python -c "import setup; print(setup.parse_requirements())"
     """
@@ -189,41 +172,11 @@ def parse_requirements(fname='requirements.txt', with_version=True):
     packages = list(gen_packages_items())
     return packages
 
-
+# python setup.py develop
 if __name__ == '__main__':
-    write_version_py()
+    #write_version_py()
     setup(
         name='nms_rotated_ext',
-        version=get_version(),
-        description='yolo5obb Detection Toolbox and Benchmark',
-        long_description=readme(),
-        author='yolo5obb',
-        author_email='qileimail123@gmail.com',
-        keywords='computer vision, object detection',
-        url='https://github.com/qilei123/yolov5',
-        #packages=find_packages(exclude=('configs', 'tools', 'demo')),
-        package_data={'models.ops': ['*/*.so']},
-        classifiers=[
-            'Development Status :: 4 - Beta',
-            'License :: OSI Approved :: Apache Software License',
-            'Operating System :: OS Independent',
-            'Programming Language :: Python :: 3',
-            'Programming Language :: Python :: 3.5',
-            'Programming Language :: Python :: 3.6',
-            'Programming Language :: Python :: 3.7',
-        ],
-        license='Apache License 2.0',
-        
-        setup_requires=parse_requirements('build.txt'),
-        #tests_require=parse_requirements('requirements/tests.txt'),
-        #install_requires=parse_requirements('requirements/runtime.txt'),
-        extras_require={
-            #'all': parse_requirements('requirements.txt'),
-            #'tests': parse_requirements('requirements/tests.txt'),
-            'build': parse_requirements('build.txt'),
-            #'optional': parse_requirements('requirements/optional.txt'),
-        },
-        
         ext_modules=[
             make_cuda_ext(
                 name='nms_rotated_ext',
