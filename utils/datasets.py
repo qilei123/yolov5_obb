@@ -1226,7 +1226,7 @@ class LoadImagesAndLabels4TD(LoadImagesAndLabels):
                     
                     for coord_index,coord in enumerate(ann_segmentation_minrect):
                         if coord_index%2==1:
-                            '''
+                            
                             box.append(ann_segmentation_minrect[coord_index-1]/img_width)
                             box.append(coord/img_height)
 
@@ -1238,7 +1238,7 @@ class LoadImagesAndLabels4TD(LoadImagesAndLabels):
 
                             seg.append(ann_segmentation_minrect[coord_index-1])
                             seg.append(coord)
-                    
+                            '''
                     boxes.append(box)
                     segs.append(seg)
 
