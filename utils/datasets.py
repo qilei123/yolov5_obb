@@ -125,7 +125,7 @@ def exif_transpose(image):
 
 
 def create_dataloader(path, imgsz, batch_size, stride, names, single_cls=False, hyp=None, augment=False, cache=False, pad=0.0,
-                      rect=False, rank=-1, workers=8, image_weights=False, quad=False, prefix='', shuffle=False,select_cats=None):
+                      rect=False, rank=-1, workers=8, image_weights=False, quad=False, prefix='', shuffle=False):
     if rect and shuffle:
         LOGGER.warning('WARNING: --rect is incompatible with DataLoader shuffle, setting shuffle=False')
         shuffle = False
@@ -140,8 +140,7 @@ def create_dataloader(path, imgsz, batch_size, stride, names, single_cls=False, 
                                         stride=int(stride),
                                         pad=pad,
                                         image_weights=image_weights,
-                                        prefix=prefix,
-                                        select_cats=select_cats)
+                                        prefix=prefix)
         else:
             dataset = LoadImagesAndLabels(path, names, imgsz, batch_size,
                                         augment=augment,  # augmentation
@@ -1159,8 +1158,8 @@ class LoadImagesAndLabels4TD(LoadImagesAndLabels):
     # YOLOv5 train_loader/val_loader, loads images and labels for training and validation
     cache_version = 0.7  # dataset labels *.cache version
 
-    def __init__(self, path, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
-                 cache_images=False, single_cls=False, stride=32, pad=0.0, prefix='',select_cats = None):
+    def __init__(self, path, cls_names, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
+                 cache_images=False, single_cls=False, stride=32, pad=0.0, prefix=''):
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
@@ -1173,6 +1172,7 @@ class LoadImagesAndLabels4TD(LoadImagesAndLabels):
         self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
         self.path = path
+        self.cls_names = cls_names
         self.albumentations = Albumentations() if augment else None
 
         # dictory example:
@@ -1187,8 +1187,8 @@ class LoadImagesAndLabels4TD(LoadImagesAndLabels):
         self.segments = []
         self.obbs = []
 
-        if select_cats:
-            select_cats_id = coco.getCatIds(catNms=select_cats)
+        if self.cls_names:
+            select_cats_id = coco.getCatIds(catNms=self.cls_names)
         else:
             select_cats_id = coco.getCatIds()
 
